@@ -13,15 +13,19 @@ import {
   Trophy,
   CheckCircle2,
   AlertCircle,
+  Zap,
+  Coins,
+  Flame,
 } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
-import { getDocuments, getRecentSessions, deleteDocument } from '@/lib/db';
+import { getDocuments, getRecentSessions, deleteDocument, getUserStats } from '@/lib/db';
 import type { DocumentRow, GameSessionRow } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
 
 interface DashboardData {
   documents: DocumentRow[];
   sessions: GameSessionRow[];
+  stats: any;
 }
 
 export function DashboardPage() {
@@ -30,11 +34,12 @@ export function DashboardPage() {
 
   const load = async () => {
     setLoading(true);
-    const [documents, sessions] = await Promise.all([
+    const [documents, sessions, statsData] = await Promise.all([
       getDocuments(),
       getRecentSessions(8),
+      getUserStats(),
     ]);
-    setData({ documents, sessions });
+    setData({ documents, sessions, stats: statsData.stats });
     setLoading(false);
   };
 
@@ -85,7 +90,7 @@ export function DashboardPage() {
     {
       icon: Trophy,
       label: 'Games Played',
-      value: sessions.length,
+      value: data?.stats?.total_games_played || sessions.length,
       color: 'from-sky-500 to-blue-500',
     },
     {
@@ -95,6 +100,8 @@ export function DashboardPage() {
       color: 'from-rose-500 to-pink-500',
     },
   ];
+
+  const userStats = data?.stats;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -135,6 +142,44 @@ export function DashboardPage() {
             );
           })}
         </div>
+
+        {/* Gamification bar */}
+        {userStats && (userStats.total_xp > 0 || userStats.streak_days > 0) && (
+          <div className="mt-6 card overflow-hidden">
+            <div className="flex flex-wrap items-center gap-6 p-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-sm">
+                  <Zap className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-slate-900">{userStats.total_xp.toLocaleString()} XP</p>
+                  <p className="text-xs text-slate-500">Level {userStats.level}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-yellow-400 to-amber-500 shadow-sm">
+                  <Coins className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-slate-900">{userStats.coins.toLocaleString()}</p>
+                  <p className="text-xs text-slate-500">Coins</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-rose-400 to-red-500 shadow-sm">
+                  <Flame className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-slate-900">{userStats.streak_days} days</p>
+                  <p className="text-xs text-slate-500">Streak</p>
+                </div>
+              </div>
+              <Link to="/progress" className="ml-auto btn-secondary text-sm">
+                <Trophy className="h-4 w-4" /> View Progress
+              </Link>
+            </div>
+          </div>
+        )}
 
         <div className="mt-8 grid gap-6 lg:grid-cols-3">
           {/* Document library */}

@@ -14,33 +14,63 @@ interface ChatMessage {
   content: string;
 }
 
+type TeacherMode = 'eli6' | 'eli12' | 'highschool' | 'university' | 'professional' | 'teacher';
+
 interface TeacherRequest {
   documentText: string;
   documentTitle: string;
   question: string;
-  mode: 'child' | 'student' | 'professional';
+  mode: TeacherMode;
   history: ChatMessage[];
 }
 
-function buildSystemPrompt(mode: string, docTitle: string): string {
-  const modeInstruction = mode === 'child'
-    ? 'You are a friendly, patient teacher explaining things to a young child. Use very simple words, short sentences, and fun analogies. Be warm and encouraging.'
-    : mode === 'professional'
-    ? 'You are an expert academic tutor. Provide thorough, precise, and detailed explanations. Use professional terminology and cite specific parts of the document.'
-    : 'You are a helpful academic tutor. Explain concepts clearly and thoroughly using language appropriate for a student. Provide examples and analogies when helpful.';
+const MODE_CONFIG: Record<TeacherMode, { name: string; instruction: string }> = {
+  eli6: {
+    name: 'Explain Like I\'m 6',
+    instruction: 'You are a friendly, patient teacher explaining things to a 6-year-old child. Use very simple words, short sentences, fun analogies, and playful language. Be warm and encouraging. Avoid jargon entirely.',
+  },
+  eli12: {
+    name: 'Explain Like I\'m 12',
+    instruction: 'You are a friendly teacher explaining things to a 12-year-old. Use simple but not childish language. Provide clear examples and relatable analogies. Keep explanations straightforward.',
+  },
+  highschool: {
+    name: 'High School',
+    instruction: 'You are a helpful high school teacher. Explain concepts clearly using language appropriate for teenagers. Provide examples and context. Help the student understand the material for their level.',
+  },
+  university: {
+    name: 'University',
+    instruction: 'You are a university professor. Provide thorough, precise, and detailed explanations. Use academic terminology appropriately. Include nuances and deeper analysis.',
+  },
+  professional: {
+    name: 'Professional',
+    instruction: 'You are an expert academic tutor for professionals. Provide concise, precise, and technically accurate explanations. Use professional terminology and cite specific parts of the document.',
+  },
+  teacher: {
+    name: 'Teacher Mode',
+    instruction: 'You are a teaching assistant helping another teacher. Provide comprehensive explanations, suggest teaching strategies, highlight common student misconceptions, and suggest discussion questions or activities related to the topic.',
+  },
+};
 
-  return `${modeInstruction}
+function buildSystemPrompt(mode: TeacherMode, docTitle: string): string {
+  const config = MODE_CONFIG[mode] || MODE_CONFIG.university;
+
+  return `${config.instruction}
 
 You are helping someone learn from a document titled "${docTitle}".
-Answer questions based ONLY on the information in the provided document text.
-If the answer is not in the document, say so honestly — do not make up information.
-When explaining, you may:
-- Break down complex ideas into simpler parts
-- Provide analogies and examples related to the document content
-- Summarize key points
-- Suggest follow-up questions
 
-Keep responses concise but complete. Write in the same language as the document.`;
+CRITICAL RULES:
+1. Answer questions based ONLY on the information in the provided document text.
+2. NEVER hallucinate or make up information not in the document.
+3. If the answer is not in the document, say so honestly: "This information is not covered in the document."
+4. When answering, ALWAYS cite which chapter or section the answer comes from. Format citations as: [Source: Chapter/Section Name]
+5. If multiple sections are relevant, cite all of them.
+6. You may:
+   - Break down complex ideas into simpler parts
+   - Provide analogies and examples related to the document content
+   - Summarize key points
+   - Suggest follow-up questions
+7. Keep responses concise but complete.
+8. Write in the same language as the document.`;
 }
 
 Deno.serve(async (req: Request) => {
@@ -78,17 +108,18 @@ Deno.serve(async (req: Request) => {
       return respond({ error: 'Missing question or document text.' }, 400);
     }
 
-    console.log(`[ai-teacher] Question: "${body.question.slice(0, 100)}", mode: ${body.mode}, doc: ${body.documentText.length} chars, history: ${body.history.length} msgs`);
+    const mode = body.mode || 'university';
+    console.log(`[ai-teacher] Question: "${body.question.slice(0, 100)}", mode: ${mode} (${MODE_CONFIG[mode]?.name}), doc: ${body.documentText.length} chars, history: ${body.history.length} msgs`);
 
     const docText = body.documentText.length > MAX_DOC_CHARS
       ? body.documentText.slice(0, MAX_DOC_CHARS) + '\n\n[Document truncated]'
       : body.documentText;
 
-    const systemPrompt = buildSystemPrompt(body.mode, body.documentTitle);
+    const systemPrompt = buildSystemPrompt(mode, body.documentTitle);
 
     const messages: GeminiMessage[] = [
       { role: 'user', parts: [{ text: `Document content:\n\n${docText}` }] },
-      { role: 'model', parts: [{ text: 'I have read the document. Ask me any question about it.' }] },
+      { role: 'model', parts: [{ text: 'I have read the document carefully. Ask me any question about it and I will answer based only on what the document says, citing the relevant chapter or section.' }] },
       ...body.history.slice(-6).map((m): GeminiMessage => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }],

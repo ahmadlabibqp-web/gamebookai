@@ -1,4 +1,4 @@
-import type { DocumentAnalysis, GameType, GameContent } from '@/lib/types';
+import type { DocumentAnalysis, GameType, GameContent, GameConfig, BloomLevel } from '@/lib/types';
 
 const FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-content`;
 const HEADERS = {
@@ -11,24 +11,18 @@ export type LearningMode = 'child' | 'student' | 'professional';
 interface GenerateParams {
   contentType: GameType;
   analysis: DocumentAnalysis;
-  config: {
-    questionCount?: number;
-    difficulty?: 'Beginner' | 'Intermediate' | 'Advanced';
-    learningMode?: LearningMode;
-  };
+  config: GameConfig;
 }
 
-// ─── Duplicate request prevention ─────────────────────────────────────────────
 const inflight = new Map<string, Promise<GameContent>>();
 
 function dedupeKey(params: GenerateParams): string {
-  return `${params.contentType}:${params.analysis.title}:${params.config?.difficulty ?? ''}:${params.config?.questionCount ?? ''}:${params.config?.learningMode ?? ''}`;
+  return `${params.contentType}:${params.analysis.title}:${params.config?.difficulty ?? ''}:${params.config?.questionCount ?? ''}:${params.config?.learningMode ?? ''}:${params.config?.bloomLevel ?? ''}`;
 }
 
 export async function generateContentWithAI(params: GenerateParams): Promise<GameContent> {
   const key = dedupeKey(params);
 
-  // If the same content is already being generated, return the in-flight promise
   const existing = inflight.get(key);
   if (existing) {
     console.log(`[content] Reusing in-flight request for ${params.contentType}`);
@@ -50,6 +44,13 @@ export async function generateContentWithAI(params: GenerateParams): Promise<Gam
           learning_objectives: params.analysis.learning_objectives,
           important_terms: params.analysis.important_terms,
           glossary: params.analysis.glossary,
+          important_people: params.analysis.important_people,
+          places: params.analysis.places,
+          dates: params.analysis.dates,
+          formulas: params.analysis.formulas,
+          cause_effect: params.analysis.cause_effect,
+          examples: params.analysis.examples,
+          knowledge_graph: params.analysis.knowledge_graph,
           difficulty: params.analysis.difficulty,
           language: params.analysis.language,
         },

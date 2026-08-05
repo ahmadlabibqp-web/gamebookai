@@ -1,11 +1,9 @@
 import {
   corsHeaders,
-  DEFAULT_MODEL,
   resolveApiKey,
   resolveModel,
   callGemini,
   parseJSONWithRetry,
-  extractJSON,
   cleanPdfText,
   splitIntoChunks,
   GeminiError,
@@ -24,15 +22,32 @@ interface AnalyzeRequest {
 
 interface RawAIResponse {
   title?: string;
+  subtitle?: string;
   summary?: string;
+  executive_summary?: string;
+  beginner_summary?: string;
+  student_summary?: string;
+  teacher_summary?: string;
   chapters?: { heading: string; level: number; page: number; text: string }[];
-  concepts?: { term: string; definition: string; occurrences: number }[];
+  sections?: { heading: string; page: number; text: string }[];
+  concepts?: { term: string; definition: string; occurrences: number; type?: string }[];
   keywords?: string[];
   learning_objectives?: string[];
   important_terms?: { term: string; definition: string }[];
   glossary?: { term: string; definition: string }[];
+  important_people?: { name: string; role: string; description: string }[];
+  places?: { name: string; description: string }[];
+  dates?: { date: string; event: string }[];
+  numbers?: { value: string; context: string }[];
+  formulas?: { formula: string; description: string }[];
+  cause_effect?: { cause: string; effect: string }[];
+  examples?: string[];
+  frequently_repeated?: string[];
+  knowledge_graph?: { nodes: { id: string; label: string; type: string }[]; edges: { source: string; target: string; relationship: string }[] };
   difficulty?: string;
   estimated_age?: string;
+  estimated_study_time?: number;
+  concept_count?: number;
   language?: string;
 }
 
@@ -69,42 +84,64 @@ function resolveLanguage(raw: string | undefined, text: string): string {
   return detectLanguageHeuristic(text);
 }
 
-// ─── Prompts ──────────────────────────────────────────────────────────────────
+// ─── Enhanced System Prompt ───────────────────────────────────────────────────
 
 function buildSystemPrompt(isChunk = false): string {
   const chunkNote = isChunk
     ? '\nIMPORTANT: This is a PARTIAL section of a larger document. Extract as much detail as you can from this section only.'
     : '';
 
-  return `You are an educational content expert and curriculum designer. You analyze educational documents and extract structured learning content from them.${chunkNote}
+  return `You are an expert educational content analyst and curriculum designer. You deeply understand educational documents and extract structured learning content.${chunkNote}
 
-You will receive the extracted text from an educational PDF. Your job is to understand the document deeply and return ONLY valid JSON (no markdown, no code fences, no commentary) with the following structure:
+You will receive the extracted text from an educational document. Your job is to deeply understand the document and return ONLY valid JSON (no markdown, no code fences, no commentary) with this structure:
 
 {
-  "title": "The document title (derive from content or filename)",
+  "title": "Document title (derive from content or filename)",
+  "subtitle": "Subtitle or secondary title if present, otherwise empty string",
   "summary": "A 3-5 sentence summary of the document's main topic and purpose",
-  "chapters": [{"heading": "Section/chapter heading", "level": 1, "page": 1, "text": "Brief description of this section's content"}],
-  "concepts": [{"term": "Key concept name", "definition": "Clear definition as stated in the document", "occurrences": 1}],
-  "keywords": ["important", "vocabulary", "terms", "from", "the", "document"],
-  "learning_objectives": ["What the reader should learn from this document"],
-  "important_terms": [{"term": "Term name", "definition": "Definition from the document"}],
+  "executive_summary": "A concise 2-3 paragraph overview for someone who needs the key takeaways quickly",
+  "beginner_summary": "A simplified explanation of the document for someone with no prior knowledge of the topic. Use plain language and analogies.",
+  "student_summary": "A structured summary appropriate for a student studying this material. Include key points and study focus areas.",
+  "teacher_summary": "A summary for teachers, highlighting teaching points, common misconceptions, and suggested discussion topics.",
+  "chapters": [{"heading": "Chapter/section heading", "level": 1, "page": 1, "text": "Brief description of this section's content"}],
+  "concepts": [{"term": "Key concept name", "definition": "Clear definition as stated in the document", "occurrences": 1, "type": "concept|definition|formula|person|place|date|term"}],
+  "keywords": ["important", "vocabulary", "terms"],
+  "learning_objectives": ["What the reader should learn"],
+  "important_terms": [{"term": "Term name", "definition": "Definition"}],
   "glossary": [{"term": "Glossary term", "definition": "Glossary definition"}],
+  "important_people": [{"name": "Person name", "role": "Their role or title", "description": "Brief description of their significance"}],
+  "places": [{"name": "Place name", "description": "Significance in the document"}],
+  "dates": [{"date": "Date or time period", "event": "What happened"}],
+  "numbers": [{"value": "Significant number", "context": "Why this number matters"}],
+  "formulas": [{"formula": "Formula or equation", "description": "What it means"}],
+  "cause_effect": [{"cause": "Cause", "effect": "Effect"}],
+  "examples": ["Example from the document"],
+  "frequently_repeated": ["Concepts or terms that appear multiple times"],
+  "knowledge_graph": {
+    "nodes": [{"id": "concept_id", "label": "Concept name", "type": "concept|process|entity|event|property"}],
+    "edges": [{"source": "concept_id", "target": "concept_id", "relationship": "leads_to|part_of|causes|requires|example_of|related_to"}]
+  },
   "difficulty": "Beginner | Intermediate | Advanced",
   "estimated_age": "e.g. 8-12 years, 13-17 years, 18+ years",
-  "language": "The primary language of the document (e.g. Arabic, Indonesian, English, French, Spanish)"
+  "estimated_study_time": "Estimated study time in minutes (integer)",
+  "concept_count": "Number of distinct learning concepts (integer)",
+  "language": "Primary language (full English name e.g. Arabic, English, French)"
 }
 
 Rules:
 - Base ALL content strictly on the provided document text. Do not invent information.
-- Extract at least 5-15 concepts with real definitions from the text.
-- Extract 10-30 keywords that appear in the document.
-- Provide 3-8 learning objectives.
-- Provide 5-15 important terms with definitions.
+- Extract at least 10-20 concepts with real definitions from the text.
+- Extract 15-40 keywords that appear in the document.
+- Provide 4-10 learning objectives.
+- Provide 8-20 important terms with definitions.
 - Provide a glossary of 5-15 terms.
 - Identify chapters/sections by detecting headings in the text.
+- Build a knowledge graph with 8-20 nodes and 10-30 edges connecting related concepts.
 - difficulty must be exactly one of: "Beginner", "Intermediate", "Advanced".
-- language must be the full English name of the document's primary language (e.g. "Arabic", "Indonesian", "English"). Never return a language code like "en" or "ar".
-- Write the summary, learning_objectives, and all definitions in the SAME language as the document.
+- estimated_study_time should be a reasonable estimate in minutes for reading and understanding the document.
+- concept_count should be the total number of distinct learning concepts identified.
+- language must be the full English name of the document's primary language. Never return a language code.
+- Write ALL summaries, objectives, and definitions in the SAME language as the document.
 - Return ONLY the JSON object. No markdown, no backticks, no explanation.`;
 }
 
@@ -118,10 +155,13 @@ Merge them into ONE unified JSON analysis by:
 - Combining all concepts (deduplicate by term)
 - Combining all keywords (deduplicate)
 - Combining all chapters (maintain order, deduplicate)
-- Combining all important_terms and glossary (deduplicate)
+- Combining all important_terms, glossary, important_people, places, dates, numbers, formulas, cause_effect, examples, frequently_repeated (deduplicate)
 - Combining learning_objectives (deduplicate)
-- Using the FIRST chunk's title, difficulty, estimated_age, and language
-- Writing a unified summary that covers the whole document
+- Merging knowledge_graph nodes and edges (deduplicate by id/label)
+- Using the FIRST chunk's title, subtitle, difficulty, estimated_age, and language
+- Writing unified summaries (executive, beginner, student, teacher) that cover the whole document
+- Summing estimated_study_time across chunks
+- Summing concept_count across chunks
 
 Return ONLY a valid JSON object with the same structure. No markdown, no code fences.`;
 }
@@ -158,9 +198,9 @@ async function analyzeChunked(
       systemPrompt: buildSystemPrompt(false),
       userPrompt: buildUserPrompt(chunks[0], fileName),
       temperature: 0.3,
-      maxTokens: 4000,
+      maxTokens: 8000,
     });
-    return await parseJSONWithRetry(content, { apiKey, model, temperature: 0.3, maxTokens: 4000 });
+    return await parseJSONWithRetry(content, { apiKey, model, temperature: 0.3, maxTokens: 8000 });
   }
 
   const chunkResults: RawAIResponse[] = [];
@@ -172,9 +212,9 @@ async function analyzeChunked(
       systemPrompt: buildSystemPrompt(true),
       userPrompt: buildUserPrompt(chunks[i], `${fileName} (part ${i + 1}/${chunks.length})`),
       temperature: 0.3,
-      maxTokens: 3000,
+      maxTokens: 6000,
     });
-    const parsed = await parseJSONWithRetry(content, { apiKey, model, temperature: 0.3, maxTokens: 3000 });
+    const parsed = await parseJSONWithRetry(content, { apiKey, model, temperature: 0.3, maxTokens: 6000 });
     chunkResults.push(parsed);
   }
 
@@ -189,9 +229,9 @@ async function analyzeChunked(
     systemPrompt: buildMergeSystemPrompt(),
     userPrompt: mergePrompt,
     temperature: 0.3,
-    maxTokens: 5000,
+    maxTokens: 8000,
   });
-  return await parseJSONWithRetry(mergedContent, { apiKey, model, temperature: 0.3, maxTokens: 5000 });
+  return await parseJSONWithRetry(mergedContent, { apiKey, model, temperature: 0.3, maxTokens: 8000 });
 }
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
@@ -230,17 +270,17 @@ Deno.serve(async (req: Request) => {
     console.log(`[analyze-document] File: "${body.fileName}", pages: ${body.pageCount}, words: ${body.wordCount}, text: ${body.text?.length ?? 0} chars`);
 
     if (!body.text || typeof body.text !== 'string') {
-      return respond({ error: 'No document text received. The PDF may be empty.' }, 400);
+      return respond({ error: 'No document text received. The document may be empty.' }, 400);
     }
     if (body.text.trim().length < 50) {
-      return respond({ error: 'Extracted text is too short (< 50 characters). The PDF may be a scanned image without selectable text.' }, 400);
+      return respond({ error: 'Extracted text is too short (< 50 characters). The document may be a scanned image without selectable text.' }, 400);
     }
 
     const cleanedText = cleanPdfText(body.text);
     console.log(`[analyze-document] Cleaned text: ${cleanedText.length} chars`);
 
     if (cleanedText.length < 50) {
-      return respond({ error: 'No readable text could be extracted from this PDF. It may be a scanned image PDF.' }, 400);
+      return respond({ error: 'No readable text could be extracted from this document. It may be a scanned image.' }, 400);
     }
 
     let raw: RawAIResponse;
@@ -257,7 +297,7 @@ Deno.serve(async (req: Request) => {
     const validationErrors = validateAIResponse(raw);
     if (validationErrors.length > 0) {
       console.error('[analyze-document] Validation errors:', validationErrors);
-      if (!raw.title) raw.title = body.fileName.replace(/\.pdf$/i, '');
+      if (!raw.title) raw.title = body.fileName.replace(/\.\w+$/, '');
       if (!raw.summary) raw.summary = 'Summary not available.';
       if (!Array.isArray(raw.concepts)) raw.concepts = [];
       if (!Array.isArray(raw.keywords)) raw.keywords = [];
@@ -271,9 +311,17 @@ Deno.serve(async (req: Request) => {
       (s) => s.trim().split(/\s+/).length >= 4,
     );
 
+    const studyTime = raw.estimated_study_time || Math.max(10, Math.round(body.wordCount / 200));
+    const conceptCount = raw.concept_count || raw.concepts?.length || 0;
+
     const analysis = {
       title: raw.title!,
+      subtitle: raw.subtitle || '',
       summary: raw.summary!,
+      executive_summary: raw.executive_summary || raw.summary!,
+      beginner_summary: raw.beginner_summary || '',
+      student_summary: raw.student_summary || raw.summary!,
+      teacher_summary: raw.teacher_summary || '',
       chapters: (raw.chapters || []).map((c, i) => ({
         heading: c.heading || `Section ${i + 1}`,
         level: c.level || 1,
@@ -284,13 +332,25 @@ Deno.serve(async (req: Request) => {
         term: c.term,
         definition: c.definition,
         occurrences: c.occurrences || 1,
+        type: c.type || 'concept',
       })),
       keywords: raw.keywords || [],
       learning_objectives: raw.learning_objectives || [],
       important_terms: raw.important_terms || [],
       glossary: raw.glossary || [],
+      important_people: raw.important_people || [],
+      places: raw.places || [],
+      dates: raw.dates || [],
+      numbers: raw.numbers || [],
+      formulas: raw.formulas || [],
+      cause_effect: raw.cause_effect || [],
+      examples: raw.examples || [],
+      frequently_repeated: raw.frequently_repeated || [],
+      knowledge_graph: raw.knowledge_graph || { nodes: [], edges: [] },
       difficulty: raw.difficulty as 'Beginner' | 'Intermediate' | 'Advanced',
       estimatedAge: raw.estimated_age || 'Unknown',
+      estimated_study_time: studyTime,
+      concept_count: conceptCount,
       language: resolveLanguage(raw.language, cleanedText),
       stats: {
         pages: body.pageCount,
@@ -302,7 +362,7 @@ Deno.serve(async (req: Request) => {
       },
     };
 
-    console.log(`[analyze-document] Done. Title: "${analysis.title}", language: ${analysis.language}, concepts: ${analysis.concepts.length}`);
+    console.log(`[analyze-document] Done. Title: "${analysis.title}", language: ${analysis.language}, concepts: ${analysis.concepts.length}, graph nodes: ${analysis.knowledge_graph.nodes.length}`);
 
     return respond({ analysis });
   } catch (err) {

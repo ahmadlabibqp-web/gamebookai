@@ -10,6 +10,37 @@ import { saveAs } from 'file-saver';
 import type { DocumentAnalysis, GameType } from '@/lib/types';
 import { GAME_LABELS } from '@/lib/types';
 
+export function exportCSV(data: any[], fileName: string) {
+  if (!data.length) return;
+  const headers = Object.keys(data[0]);
+  const rows = data.map((row) =>
+    headers.map((h) => {
+      const val = typeof row[h] === 'object' ? JSON.stringify(row[h]) : String(row[h] ?? '');
+      return `"${val.replace(/"/g, '""')}"`;
+    }).join(','),
+  );
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  saveAs(blob, fileName);
+}
+
+export function exportPrint(title: string, content: string) {
+  const win = window.open('', '_blank');
+  if (!win) return;
+  win.document.write(`
+    <html><head><title>${title}</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 40px; line-height: 1.6; }
+      h1 { font-size: 24px; }
+      h2 { font-size: 18px; margin-top: 24px; }
+      .concept { margin-bottom: 12px; }
+      @media print { body { padding: 0; } }
+    </style></head><body>${content}</body></html>
+  `);
+  win.document.close();
+  win.print();
+}
+
 export function exportJSON(data: any, fileName: string) {
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: 'application/json',
@@ -238,6 +269,58 @@ export function exportGamePDF(
       });
       break;
     }
+    case 'timeline': {
+      const tl = content as { events: any[] };
+      const sorted = [...tl.events].sort((a, b) => a.order - b.order);
+      sorted.forEach((e, i) => {
+        if (y > 270) { doc.addPage(); y = 20; }
+        const lines = doc.splitTextToSize(`${i + 1}. ${e.date} — ${e.event}`, 170);
+        doc.text(lines, 20, y);
+        y += lines.length * 6 + 3;
+      });
+      break;
+    }
+    case 'sorting': {
+      const sg = content as { categories: any[]; items: any[] };
+      sg.categories.forEach((cat) => {
+        if (y > 270) { doc.addPage(); y = 20; }
+        doc.setFont('helvetica', 'bold');
+        doc.text(cat.name, 20, y);
+        y += 6;
+        doc.setFont('helvetica', 'normal');
+        const catItems = sg.items.filter((it) => it.category === cat.id);
+        catItems.forEach((it) => {
+          const lines = doc.splitTextToSize(`   - ${it.label}`, 170);
+          doc.text(lines, 20, y);
+          y += lines.length * 6 + 2;
+        });
+        y += 4;
+      });
+      break;
+    }
+    case 'conceptmap': {
+      const cm = content as { nodes: any[]; edges: any[] };
+      doc.text('Nodes:', 20, y);
+      y += 6;
+      cm.nodes.forEach((n, i) => {
+        if (y > 270) { doc.addPage(); y = 20; }
+        const lines = doc.splitTextToSize(`${i + 1}. ${n.label} (${n.type})`, 170);
+        doc.text(lines, 20, y);
+        y += lines.length * 6 + 2;
+      });
+      y += 4;
+      doc.text('Connections:', 20, y);
+      y += 6;
+      cm.edges.forEach((e) => {
+        if (y > 270) { doc.addPage(); y = 20; }
+        const src = cm.nodes.find((n) => n.id === e.source);
+        const tgt = cm.nodes.find((n) => n.id === e.target);
+        const lines = doc.splitTextToSize(`${src?.label} → ${tgt?.label}: ${e.label}`, 170);
+        doc.text(lines, 20, y);
+        y += lines.length * 6 + 2;
+      });
+      break;
+    }
   }
 
   doc.save(`${title}-${type}.pdf`);
@@ -350,6 +433,40 @@ export async function exportGameDOCX(
         .forEach((c: any) => {
           children.push(new Paragraph({ text: `${c.number}. ${c.clue}` }));
         });
+      break;
+    }
+    case 'timeline': {
+      const tl = content as { events: any[] };
+      const sorted = [...tl.events].sort((a, b) => a.order - b.order);
+      sorted.forEach((e, i) => {
+        children.push(new Paragraph({ text: `${i + 1}. ${e.date} — ${e.event}` }));
+      });
+      break;
+    }
+    case 'sorting': {
+      const sg = content as { categories: any[]; items: any[] };
+      sg.categories.forEach((cat) => {
+        children.push(new Paragraph({ text: cat.name, heading: HeadingLevel.HEADING_2 }));
+        const catItems = sg.items.filter((it) => it.category === cat.id);
+        catItems.forEach((it) => {
+          children.push(new Paragraph({ text: `   - ${it.label}` }));
+        });
+        children.push(new Paragraph({ text: '' }));
+      });
+      break;
+    }
+    case 'conceptmap': {
+      const cm = content as { nodes: any[]; edges: any[] };
+      children.push(new Paragraph({ text: 'Concepts', heading: HeadingLevel.HEADING_2 }));
+      cm.nodes.forEach((n, i) => {
+        children.push(new Paragraph({ text: `${i + 1}. ${n.label} (${n.type})` }));
+      });
+      children.push(new Paragraph({ text: 'Connections', heading: HeadingLevel.HEADING_2 }));
+      cm.edges.forEach((e) => {
+        const src = cm.nodes.find((n) => n.id === e.source);
+        const tgt = cm.nodes.find((n) => n.id === e.target);
+        children.push(new Paragraph({ text: `${src?.label} → ${tgt?.label}: ${e.label}` }));
+      });
       break;
     }
   }

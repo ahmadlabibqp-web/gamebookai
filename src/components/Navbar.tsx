@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { BookOpen, LayoutDashboard, Upload, Menu, X, Settings } from 'lucide-react';
+import { BookOpen, LayoutDashboard, Upload, Menu, X, Settings, Trophy } from 'lucide-react';
 import { useState } from 'react';
 
 export function Navbar() {
@@ -9,7 +9,8 @@ export function Navbar() {
   const navItems = [
     { to: '/', label: 'Home', icon: BookOpen },
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/upload', label: 'Upload PDF', icon: Upload },
+    { to: '/upload', label: 'Upload', icon: Upload },
+    { to: '/progress', label: 'Progress', icon: Trophy },
     { to: '/settings', label: 'Settings', icon: Settings },
   ];
 

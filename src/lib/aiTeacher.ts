@@ -1,10 +1,10 @@
+import type { TeacherMode } from '@/lib/types';
+
 const FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-teacher`;
 const HEADERS = {
   Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
   'Content-Type': 'application/json',
 };
-
-export type LearningMode = 'child' | 'student' | 'professional';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -15,15 +15,13 @@ interface AskParams {
   documentText: string;
   documentTitle: string;
   question: string;
-  mode: LearningMode;
+  mode: TeacherMode;
   history: ChatMessage[];
 }
 
-// ─── Duplicate request prevention ─────────────────────────────────────────────
 let inflight: Promise<string> | null = null;
 
 export async function askTeacher(params: AskParams): Promise<string> {
-  // If a request is already in flight, wait for it to finish before sending a new one
   if (inflight) {
     await inflight.catch(() => {});
   }

@@ -20,6 +20,9 @@ const PlayGamePage = lazy(() =>
 const SettingsPage = lazy(() =>
   import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 );
+const ProgressPage = lazy(() =>
+  import('@/pages/ProgressPage').then((m) => ({ default: m.ProgressPage })),
+);
 const NotFoundPage = lazy(() =>
   import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
 );
@@ -74,6 +77,14 @@ export default function App() {
           element={
             <Suspense fallback={<PageLoader />}>
               <SettingsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/progress"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <ProgressPage />
             </Suspense>
           }
         />

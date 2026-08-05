@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -8,7 +8,7 @@ import {
   Play,
 } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
-import { getGame, getDocument, saveSession } from '@/lib/db';
+import { getGame, getDocument, saveSession, processGameSession } from '@/lib/db';
 import type { GameRow, DocumentRow, GameType } from '@/lib/types';
 import { GAME_LABELS } from '@/lib/types';
 import { QuizGameView } from '@/components/games/QuizGameView';
@@ -20,6 +20,9 @@ import { HangmanGameView } from '@/components/games/HangmanGameView';
 import { MemoryGameView } from '@/components/games/MemoryGameView';
 import { SequenceGameView } from '@/components/games/SequenceGameView';
 import { CrosswordGameView } from '@/components/games/CrosswordGameView';
+import { TimelineGameView } from '@/components/games/TimelineGameView';
+import { SortingGameView } from '@/components/games/SortingGameView';
+import { ConceptMapView } from '@/components/games/ConceptMapGameView';
 
 interface GameResult {
   score: number;
@@ -36,10 +39,12 @@ export function PlayGamePage() {
   const [loading, setLoading] = useState(true);
   const [paused, setPaused] = useState(false);
   const [sessionSaved, setSessionSaved] = useState(false);
+  const startTimeRef = useRef<number>(Date.now());
 
   useEffect(() => {
     const load = async () => {
       if (!docId || !gameId) return;
+      startTimeRef.current = Date.now();
       const [g, d] = await Promise.all([getGame(gameId), getDocument(docId)]);
       setGame(g);
       setDoc(d);
@@ -51,17 +56,25 @@ export function PlayGamePage() {
   const handleFinish = async (result: GameResult) => {
     if (!game || !doc || sessionSaved) return;
     setSessionSaved(true);
-    await saveSession({
+    const durationMs = Date.now() - startTimeRef.current;
+    const session = await saveSession({
       game_id: game.id,
       document_id: doc.id,
       score: result.score,
       max_score: result.maxScore,
       correct: result.correct,
       total: result.total,
-      duration_ms: 0,
+      duration_ms: durationMs,
       completed: true,
       answers: result.answers,
     });
+    if (session) {
+      try {
+        await processGameSession(session.id);
+      } catch (err) {
+        console.error('Failed to process gamification:', err);
+      }
+    }
   };
 
   if (loading) {
@@ -116,6 +129,12 @@ export function PlayGamePage() {
         return <SequenceGameView game={content} onFinish={handleFinish} backLink={backLink} />;
       case 'crossword':
         return <CrosswordGameView game={content} onFinish={handleFinish} backLink={backLink} />;
+      case 'timeline':
+        return <TimelineGameView game={content} onFinish={handleFinish} backLink={backLink} />;
+      case 'sorting':
+        return <SortingGameView game={content} onFinish={handleFinish} backLink={backLink} />;
+      case 'conceptmap':
+        return <ConceptMapView game={content} onFinish={handleFinish} backLink={backLink} />;
       default:
         return null;
     }

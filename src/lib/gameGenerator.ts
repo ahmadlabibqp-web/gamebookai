@@ -528,5 +528,68 @@ export function generateGame(
       return generateSequence(analysis);
     case 'crossword':
       return generateCrossword(analysis);
+    case 'timeline':
+      return generateTimeline(analysis);
+    case 'sorting':
+      return generateSorting(analysis);
+    case 'conceptmap':
+      return generateConceptMap(analysis);
   }
+}
+
+function generateTimeline(analysis: DocumentAnalysis): any {
+  const dates = analysis.dates || [];
+  const events = dates.map((d, i) => ({
+    id: `t_${i}`,
+    date: d.date,
+    event: d.event,
+    description: '',
+    order: i + 1,
+  }));
+  return { events };
+}
+
+function generateSorting(analysis: DocumentAnalysis): any {
+  const concepts = analysis.concepts.slice(0, 10);
+  const categories = [
+    { id: 'cat_1', name: 'Key Concepts', items: concepts.filter((_, i) => i % 3 === 0).map((c) => c.term) },
+    { id: 'cat_2', name: 'Important Terms', items: concepts.filter((_, i) => i % 3 === 1).map((c) => c.term) },
+    { id: 'cat_3', name: 'Keywords', items: concepts.filter((_, i) => i % 3 === 2).map((c) => c.term) },
+  ];
+  const items = concepts.map((c, i) => ({
+    id: `sort_${i}`,
+    label: c.term,
+    category: `cat_${(i % 3) + 1}`,
+  }));
+  return { categories, items };
+}
+
+function generateConceptMap(analysis: DocumentAnalysis): any {
+  const graph = analysis.knowledge_graph;
+  if (graph && graph.nodes.length > 0) {
+    return {
+      nodes: graph.nodes.map((n, i) => ({
+        id: n.id,
+        label: n.label,
+        type: i === 0 ? 'central' as const : 'related' as const,
+      })),
+      edges: graph.edges.map((e) => ({
+        source: e.source,
+        target: e.target,
+        label: e.relationship,
+      })),
+    };
+  }
+  const concepts = analysis.concepts.slice(0, 10);
+  const nodes = concepts.map((c, i) => ({
+    id: `node_${i}`,
+    label: c.term,
+    type: i === 0 ? 'central' as const : 'related' as const,
+  }));
+  const edges = concepts.slice(1).map((c, i) => ({
+    source: 'node_0',
+    target: `node_${i + 1}`,
+    label: 'related to',
+  }));
+  return { nodes, edges };
 }
