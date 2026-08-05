@@ -59,7 +59,7 @@ async function testGeminiKey(apiKey: string, model: string): Promise<TestResult>
       } catch { /* not JSON */ }
 
       if (err.status === 404) {
-        return { success: false, message: `Model "${model}" is not available. The default model has been updated to "gemini-flash-latest". Please try again.` };
+        return { success: false, message: `Model "${model}" is not available. Please use "gemini-2.5-flash" or check available models for your API key.` };
       }
       if (err.status === 401 || err.status === 403) {
         return { success: false, message: 'Invalid API key. Please check your GEMINI_API_KEY.' };

@@ -4,7 +4,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 
-export const DEFAULT_MODEL = 'gemini-flash-latest';
+export const DEFAULT_MODEL = 'gemini-2.5-flash';
 export const VAULT_SECRET_NAME = 'GEMINI_API_KEY';
 export const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -85,9 +85,6 @@ export async function resolveApiKey(): Promise<string> {
 }
 
 export async function resolveModel(): Promise<string> {
-  // DB setting takes priority (user's choice in Settings), then env var, then default.
-  const dbModel = await getModelFromSettings();
-  if (dbModel) return dbModel;
   return Deno.env.get('GEMINI_MODEL') || DEFAULT_MODEL;
 }
 
@@ -295,6 +292,8 @@ export async function* callGeminiStream(opts: GeminiCallOptions): AsyncGenerator
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  console.log(`[Gemini Stream] model: ${model}, contents: ${contents.length}`);
 
   let response: Response;
   try {
