@@ -163,23 +163,19 @@ export function DocumentDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50">
-        <div className="flex h-[60vh] items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-        </div>
+      <div className="flex h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
       </div>
     );
   }
 
   if (!doc) {
     return (
-      <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-          <AlertCircle className="mx-auto mb-4 h-12 w-12 text-rose-400" />
-          <h1 className="font-display text-2xl font-bold text-slate-900">Document not found</h1>
-          <Link to="/dashboard" className="btn-primary mt-6">Back to Dashboard</Link>
-        </div>
-      </div>
+      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
+      <AlertCircle className="mx-auto mb-4 h-12 w-12 text-rose-400" />
+      <h1 className="font-display text-2xl font-bold text-slate-900">Document not found</h1>
+      <Link to="/dashboard" className="btn-primary mt-6">Back to Dashboard</Link>
+    </div>
     );
   }
 
@@ -194,8 +190,7 @@ export function DocumentDetailPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="p-6 md:p-10 max-w-6xl mx-auto w-full">
         <Link to="/dashboard" className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-indigo-600">
           <ArrowLeft className="h-4 w-4" /> Back to Dashboard
         </Link>
@@ -902,7 +897,6 @@ export function DocumentDetailPage() {
           />
         )}
       </div>
-    </div>
   );
 }
 
